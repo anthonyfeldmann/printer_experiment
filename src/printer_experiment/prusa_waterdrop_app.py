@@ -11,6 +11,8 @@ from madsci.experiment_application.experiment_application import ExperimentAppli
 from madsci.common.types.workflow_types import WorkflowDefinition
 from pydantic import Field
 from rich.console import Console
+
+# Make sure this dependency file is in the same directory!
 import camera_driver
 
 console = Console()
@@ -18,6 +20,9 @@ console = Console()
 class PrusaWaterDropConfig(ExperimentApplicationConfig):
     workflow_directory: PathLike = (Path(__file__).parent / "workflows").resolve()
     protocol_directory: PathLike = (Path(__file__).parent / "protocols").resolve()
+    
+    # ADDED: Define an image directory to store the workflow outputs locally
+    image_directory: PathLike = (Path(__file__).parent / "images").resolve()
    
     iterations: int = Field(default=10, gt=0)
     min_length: float = Field(default=10.0)
@@ -45,17 +50,20 @@ class PrusaWaterDropExperiment(ExperimentApplication):
             n_initial_points=3,
             random_state=237
         )
+        
+        # Ensure the image directory exists before running
+        self.config.image_directory.mkdir(parents=True, exist_ok=True)
 
     def loop(self, iteration: int) -> None:
        
-        #optimizer picks the next ridge length
+        # Optimizer picks the next ridge length
         suggested_x = self.opt.ask()
         ridge_length = float(suggested_x[0])
        
         self.logger.info(f"--- Iteration {iteration + 1} ---")
-        console.print(f"target length: {ridge_length:.2f} mm")
+        console.print(f"Target length: {ridge_length:.2f} mm")
 
-        #Starts Workflow (Prusa prints, then OT-2 drops)
+        # Starts Workflow (Prusa prints, then OT-2 drops, then Camera takes picture)
         workflow = self.workcell_client.start_workflow(
             workflow_definition=self.experiment_workflow,
             json_inputs={
@@ -65,27 +73,31 @@ class PrusaWaterDropExperiment(ExperimentApplication):
                 "ot2_protocol": str(self.config.protocol_directory / "OT2_CADauto.py")
             }
         )
+        
+        # Define a unique image path for this iteration so data isn't overwritten
+        image_path = self.config.image_directory / f"plate_image_iter_{iteration}.jpg"
+        
+        # Download the image taken by the workflow to your local directory
         self.data_client.save_datapoint_value(  # type: ignore[attr-defined]
             workflow.get_datapoint_id(step_key="take_picture"),
-            self.config.image_directory / "plate_image.jpg",
+            image_path,
         )
 
-       
-        #measures value
-        console.print("taking measurment")
-        error_distance = camera_driver.get_single_measurement()
+        # Measure value USING the workflow image, not the live camera
+        console.print("Processing measurement from workflow image...")
+        error_distance = camera_driver.get_single_measurement(image_path=str(image_path))
        
         if error_distance is None:
-             raise RuntimeError("OpenCV failed")
+             raise RuntimeError("OpenCV failed to process the image")
        
-        #optimizer
+        # Optimizer
         error_y = abs(float(error_distance))
         self.opt.tell(suggested_x, error_y)
        
-        console.print(f" Result: {error_y} mm off.\n")
+        console.print(f"Result: {error_y} mm off.\n")
 
     def run_experiment(self) -> None:
-        console.print("starting experiment")
+        console.print("Starting experiment...")
        
         try:
             for iteration in range(self.config.iterations):
@@ -95,7 +107,7 @@ class PrusaWaterDropExperiment(ExperimentApplication):
             self.logger.error(f"Experiment stopped: {e}")
            
         finally:
-            console.print("\n Done")
+            console.print("\nDone")
            
             if len(self.opt.yi) > 0:
                 best_index = np.argmin(self.opt.yi)
