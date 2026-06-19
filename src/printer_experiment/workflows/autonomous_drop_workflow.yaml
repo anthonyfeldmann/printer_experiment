@@ -1,0 +1,53 @@
+name: Autonomous Fluid Drop Experiment
+
+metadata:
+  author: Anthony Feldmann
+  info: Closed-loop Prusa and OT-2 fluid drop experiment
+  version: 0.1
+
+parameters:
+  json_inputs:
+    - key: prusa_args
+  file_inputs:
+    - key: ot2_protocol
+
+steps:
+  - name: Camera Deck --> Printer Deck
+    node: pf400
+    action: transer
+    locations:
+        source: camera_station_narrow
+        target: printer_deck
+
+  - name: Generate and Print Target Ridge
+    node: prusa_mk4s
+    action: slice_and_print
+    use_parameters:
+      args: prusa_args
+
+  - name: Printer Deck --> OT2
+    node: pf400
+    action: transfer
+    locations: 
+        source: printer_deck
+        target: ot2_drop
+
+  - name: Dispense Fluid
+    node: ot2_gamma
+    action: run_protocol
+    files:
+      protocol: ot2_protocol
+
+  - name: Take Picture
+    key: take_picture
+    node: camera_2 
+    action: take_picture
+    
+  - name: OT2 --> Trash
+    node: pf400
+    action: transfer
+    locations:
+        source: ot2_drop_pick 
+        target: trash
+
+
