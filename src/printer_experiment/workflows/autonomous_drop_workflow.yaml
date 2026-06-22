@@ -7,7 +7,7 @@ metadata:
 
 parameters:
   json_inputs:
-    - key: prusa_args
+    - key: length
   file_inputs:
     - key: ot2_protocol
 
@@ -24,8 +24,8 @@ steps:
     action: slice_and_print
     use_parameters:
       args: 
-        length: payload.prusa_args.length
-
+        length: payload.length  # Corrected to use MADSci's required payload mapping
+        
   - name: Printer Deck --> OT2
     node: pf400
     action: transfer
