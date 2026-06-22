@@ -21,10 +21,8 @@ class PrusaWaterDropConfig(ExperimentApplicationConfig):
     workflow_directory: PathLike = (Path(__file__).parent / "workflows").resolve()
     protocol_directory: PathLike = (Path(__file__).parent / "protocols").resolve()
     
-    # Define an image directory to store the workflow outputs locally
     image_directory: PathLike = (Path(__file__).parent / "images").resolve()
    
-    # FIX: Added to bypass the Pydantic AttributeError in the updated MADSci version
     update_node_files: bool = False
 
     iterations: int = Field(default=10, gt=0)
@@ -54,12 +52,10 @@ class PrusaWaterDropExperiment(ExperimentApplication):
             random_state=237
         )
         
-        # Ensure the image directory exists before running
         self.config.image_directory.mkdir(parents=True, exist_ok=True)
 
     def loop(self, iteration: int) -> None:
        
-        # Optimizer picks the next ridge length
         suggested_x = self.opt.ask()
         ridge_length = float(suggested_x[0])
        
@@ -70,30 +66,26 @@ class PrusaWaterDropExperiment(ExperimentApplication):
         workflow = self.workcell_client.start_workflow(
             workflow_definition=self.experiment_workflow,
             json_inputs={
-                "length": ridge_length  # <-- SIMPLIFIED THIS LINE
+                "length": ridge_length  # <-- This is the simplified line!
             },
             file_inputs={
                 "ot2_protocol": str(self.config.protocol_directory / "OT2_CADauto.py")
             }
         )
         
-        # Define a unique image path for this iteration so data isn't overwritten
         image_path = self.config.image_directory / f"plate_image_iter_{iteration}.jpg"
         
-        # Download the image taken by the workflow to your local directory
         self.data_client.save_datapoint_value(  # type: ignore[attr-defined]
             workflow.get_datapoint_id(step_key="take_picture"),
             image_path,
         )
 
-        # Measure value USING the workflow image, not the live camera
         console.print("Processing measurement from workflow image...")
         error_distance = camera_driver.get_single_measurement(image_path=str(image_path))
        
         if error_distance is None:
              raise RuntimeError("OpenCV failed to process the image")
        
-        # Optimizer
         error_y = abs(float(error_distance))
         self.opt.tell(suggested_x, error_y)
        
@@ -125,5 +117,4 @@ class PrusaWaterDropExperiment(ExperimentApplication):
 
 if __name__ == "__main__":
     app = PrusaWaterDropExperiment()
-    app.run_experiment()
     app.run_experiment()
