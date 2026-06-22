@@ -40,9 +40,11 @@ class PrusaWaterDropExperiment(ExperimentApplication):
        
         self.workcell_client = WorkcellClient("http://localhost:8005")
        
-        self.experiment_workflow = WorkflowDefinition.from_yaml(
-            self.config.workflow_directory / "autonomous_drop_workflow.yaml"
-        )
+        # Built-in ghost-file tracker: Prints exactly where it is looking for the YAML
+        yaml_path = self.config.workflow_directory / "autonomous_drop_workflow.yaml"
+        console.print(f"[bold green]LOADING YAML FROM:[/bold green] {yaml_path}")
+        
+        self.experiment_workflow = WorkflowDefinition.from_yaml(yaml_path)
 
         self.opt = Optimizer(
             dimensions=[(self.config.min_length, self.config.max_length)],
@@ -62,11 +64,11 @@ class PrusaWaterDropExperiment(ExperimentApplication):
         self.logger.info(f"--- Iteration {iteration + 1} ---")
         console.print(f"Target length: {ridge_length:.2f} mm")
 
-        # Starts Workflow (Prusa prints, then OT-2 drops, then Camera takes picture)
+        # Starts Workflow
         workflow = self.workcell_client.start_workflow(
             workflow_definition=self.experiment_workflow,
             json_inputs={
-                "length": ridge_length  # <-- This is the simplified line!
+                "length": ridge_length  # Top-level flattened dictionary variable
             },
             file_inputs={
                 "ot2_protocol": str(self.config.protocol_directory / "OT2_CADauto.py")
@@ -113,7 +115,6 @@ class PrusaWaterDropExperiment(ExperimentApplication):
                 console.print(f"[bold gold1]Minimum error achieved:[/bold gold1] {lowest_error:.2f} mm off-target.")
             else:
                 console.print("Experiment failed before any data was recorded.")
-
 
 if __name__ == "__main__":
     app = PrusaWaterDropExperiment()
