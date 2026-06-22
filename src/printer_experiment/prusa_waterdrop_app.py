@@ -21,7 +21,7 @@ class PrusaWaterDropConfig(ExperimentApplicationConfig):
     workflow_directory: PathLike = (Path(__file__).parent / "workflows").resolve()
     protocol_directory: PathLike = (Path(__file__).parent / "protocols").resolve()
     
-    # ADDED: Define an image directory to store the workflow outputs locally
+    # Define an image directory to store the workflow outputs locally
     image_directory: PathLike = (Path(__file__).parent / "images").resolve()
    
     # FIX: Added to bypass the Pydantic AttributeError in the updated MADSci version
@@ -70,7 +70,7 @@ class PrusaWaterDropExperiment(ExperimentApplication):
         workflow = self.workcell_client.start_workflow(
             workflow_definition=self.experiment_workflow,
             json_inputs={
-                "prusa_args": {"length": ridge_length}
+                "length": ridge_length  # <-- SIMPLIFIED THIS LINE
             },
             file_inputs={
                 "ot2_protocol": str(self.config.protocol_directory / "OT2_CADauto.py")
@@ -125,4 +125,5 @@ class PrusaWaterDropExperiment(ExperimentApplication):
 
 if __name__ == "__main__":
     app = PrusaWaterDropExperiment()
+    app.run_experiment()
     app.run_experiment()
