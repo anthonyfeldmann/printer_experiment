@@ -24,7 +24,7 @@ steps:
     action: slice_and_print
     use_parameters:
       args: 
-        length: payload.length  # Corrected to use MADSci's required payload mapping
+        length: length
         
   - name: Printer Deck --> OT2
     node: pf400
