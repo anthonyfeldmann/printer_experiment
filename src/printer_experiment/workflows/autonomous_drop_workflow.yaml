@@ -14,7 +14,7 @@ parameters:
 steps:
   - name: Camera Deck --> Printer Deck
     node: pf400
-    action: transer
+    action: transfer
     locations:
         source: camera_station_narrow
         target: printer_deck
@@ -23,7 +23,8 @@ steps:
     node: prusa_mk4s
     action: slice_and_print
     use_parameters:
-      args: prusa_args
+      args: 
+        length: payload.prusa_args.length
 
   - name: Printer Deck --> OT2
     node: pf400
@@ -49,5 +50,3 @@ steps:
     locations:
         source: ot2_drop_pick 
         target: trash
-
-
