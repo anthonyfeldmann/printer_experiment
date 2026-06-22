@@ -24,6 +24,9 @@ class PrusaWaterDropConfig(ExperimentApplicationConfig):
     # ADDED: Define an image directory to store the workflow outputs locally
     image_directory: PathLike = (Path(__file__).parent / "images").resolve()
    
+    # FIX: Added to bypass the Pydantic AttributeError in the updated MADSci version
+    update_node_files: bool = False
+
     iterations: int = Field(default=10, gt=0)
     min_length: float = Field(default=10.0)
     max_length: float = Field(default=100.0)
