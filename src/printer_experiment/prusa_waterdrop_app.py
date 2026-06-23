@@ -12,7 +12,6 @@ from madsci.common.types.workflow_types import WorkflowDefinition
 from pydantic import Field
 from rich.console import Console
 
-# Make sure this dependency file is in the same directory!
 import camera_driver
 
 console = Console()
@@ -39,8 +38,7 @@ class PrusaWaterDropExperiment(ExperimentApplication):
         super().__init__()
        
         self.workcell_client = WorkcellClient("http://localhost:8005")
-       
-        # Built-in ghost-file tracker: Prints exactly where it is looking for the YAML
+      
         yaml_path = self.config.workflow_directory / "autonomous_drop_workflow.yaml"
         console.print(f"[bold green]LOADING YAML FROM:[/bold green] {yaml_path}")
         
