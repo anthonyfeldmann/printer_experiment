@@ -2,7 +2,6 @@ import os
 from pathlib import Path
 from typing import Optional
 import numpy as np
-import requests # <--- ADD THIS IMPORT
 from skopt import Optimizer
 
 from madsci.client import WorkcellClient
@@ -28,10 +27,6 @@ class PrusaWaterDropConfig(ExperimentApplicationConfig):
     iterations: int = Field(default=10, gt=0)
     min_length: float = Field(default=10.0)
     max_length: float = Field(default=100.0)
-
-    
-    prusa_ip: str = "146.137.240.52"  
-    prusa_api_key: str = "jjehZqxQ542F9pQ" 
 
 
 class PrusaWaterDropExperiment(ExperimentApplication):
@@ -97,20 +92,6 @@ class PrusaWaterDropExperiment(ExperimentApplication):
        
         console.print(f"Result: {error_y} mm off.\n")
 
-        console.print("Resetting printer to Idle state...")
-        try:
-            url = f"http://{self.config.prusa_ip}/api/job"
-            headers = {"X-Api-Key": self.config.prusa_api_key}
-            
-            # Sending a DELETE to /api/job to remove the "Print Finished" screen
-            response = requests.delete(url, headers=headers, timeout=10)
-            
-            if response.status_code in [200, 204]:
-                console.print("[bold green]Printer successfully reset to Idle.[/bold green]")
-            else:
-                self.logger.warning(f"Failed to reset printer. Status Code: {response.status_code}")
-        except Exception as e:
-            self.logger.error(f"Could not connect to PrusaLink to reset printer: {e}")
         # --------------------------------
 
     def run_experiment(self) -> None:
