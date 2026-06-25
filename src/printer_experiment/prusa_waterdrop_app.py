@@ -30,8 +30,8 @@ class PrusaWaterDropConfig(ExperimentApplicationConfig):
     max_length: float = Field(default=100.0)
 
     
-    prusa_ip: str = "146.137.240.52"  # Replace with actual IP
-    prusa_api_key: str = "jjehZqxQ542F9pQ" # Replace with actual API Key
+    prusa_ip: str = "146.137.240.52"  
+    prusa_api_key: str = "jjehZqxQ542F9pQ" 
 
 
 class PrusaWaterDropExperiment(ExperimentApplication):
