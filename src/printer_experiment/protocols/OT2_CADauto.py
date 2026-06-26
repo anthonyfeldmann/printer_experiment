@@ -11,7 +11,7 @@ metadata = {
 def run(protocol: protocol_api.ProtocolContext):
     
     # --- 2. CONFIGURATION VARIABLES ---
-    DISPENSE_VOLUME = 100  # uL
+    DISPENSE_VOLUME = 1000 # uL
     OFFSET_X = 15.0 
     OFFSET_Y = 60.0
     HOVER_HEIGHT = 65.0 # Height above the top lip of the slot
