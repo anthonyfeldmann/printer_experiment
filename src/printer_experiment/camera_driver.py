@@ -17,7 +17,7 @@ def get_single_measurement(image_path: str) -> float:
         # --- CROPPING LOGIC (REGION OF INTEREST) ---
         y_start = 215
         y_end = 240
-        x_start = 350
+        x_start = 360
         x_end = 450
 
         # Apply the exact pixel crop
