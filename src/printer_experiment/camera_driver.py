@@ -14,6 +14,16 @@ def get_single_measurement(image_path: str) -> float:
         return None
 
     try:
+
+        y_start = 215
+        y_end = 240
+        x_start = 350
+        x_end = 450
+
+        # Apply the exact pixel crop
+        image = image[y_start:y_end, x_start:x_end]
+        # -----------------------------------------------
+
         # 2. Convert to grayscale and apply a blur to reduce noise
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         blurred = cv2.GaussianBlur(gray, (5, 5), 0)
@@ -30,13 +40,12 @@ def get_single_measurement(image_path: str) -> float:
             # If the drop completely missed the frame or blended in, return a high error penalty
             return 50.0
 
-        # Sort the contours by area to identify which is which
-        # Assuming the printed ridge is the largest shape, and the water drop is the second largest
+ 
         contours = sorted(contours, key=cv2.contourArea, reverse=True)
         ridge_contour = contours[0]
         drop_contour = contours[1]
 
-        # 5. Calculate the center points (Centroids) of both shapes
+
         M_ridge = cv2.moments(ridge_contour)
         cX_ridge = int(M_ridge["m10"] / (M_ridge["m00"] + 1e-5))
         cY_ridge = int(M_ridge["m01"] / (M_ridge["m00"] + 1e-5))
@@ -45,21 +54,14 @@ def get_single_measurement(image_path: str) -> float:
         cX_drop = int(M_drop["m10"] / (M_drop["m00"] + 1e-5))
         cY_drop = int(M_drop["m01"] / (M_drop["m00"] + 1e-5))
 
-        # 6. Calculate the straight-line pixel distance between the two centers
+
         pixel_distance = np.sqrt((cX_drop - cX_ridge)**2 + (cY_drop - cY_ridge)**2)
 
-        # 7. Convert pixel distance to millimeters
-        # IMPORTANT: You will need to tune this calibration factor based on how high your camera is mounted!
+
         mm_per_pixel = 0.264 
         error_distance_mm = pixel_distance * mm_per_pixel
 
-        # --- OPTIONAL DEBUGGING ---
-        # Uncomment the three lines below if you want the script to save a visual copy 
-        # showing exactly where it drew the measurement line, which is great for tuning!
-        
-        # cv2.line(image, (cX_ridge, cY_ridge), (cX_drop, cY_drop), (0, 255, 0), 2)
-        # debug_path = image_path.replace(".jpg", "_DEBUG.jpg")
-        # cv2.imwrite(debug_path, image)
+
 
         return float(error_distance_mm)
 
