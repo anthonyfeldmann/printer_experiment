@@ -4,7 +4,7 @@ import numpy as np
 def get_single_measurement(image_path: str) -> float:
     """
     Reads a saved image from the MADSci workflow, crops it, processes it to find 
-    the distance, and saves a visual overlay of the OpenCV calculations.
+    the distance, and saves visual overlays (including a line-only diagnostic view).
     """
     # 1. Load the image from the file path
     image = cv2.imread(image_path)
@@ -64,24 +64,36 @@ def get_single_measurement(image_path: str) -> float:
         error_distance_mm = pixel_distance * mm_per_pixel
 
         # --- VISUAL ANNOTATION & SAVING ---
-        # Draw a green line connecting the two centers
-        cv2.line(image, (cX_ridge, cY_ridge), (cX_drop, cY_drop), (0, 255, 0), 2)
         
-        # Draw red dots at the exact centroid coordinates so you can verify the tracking
+        # A) Save the standard overlay (over the real picture)
+        cv2.line(image, (cX_ridge, cY_ridge), (cX_drop, cY_drop), (0, 255, 0), 2)
         cv2.circle(image, (cX_ridge, cY_ridge), 2, (0, 0, 255), -1)
         cv2.circle(image, (cX_drop, cY_drop), 2, (0, 0, 255), -1)
         
-        # Format the text and find the midpoint of the line to place it
         text = f"{error_distance_mm:.2f} mm"
         mid_x = (cX_ridge + cX_drop) // 2
         mid_y = (cY_ridge + cY_drop) // 2
-        
-        # Put the measurement text slightly above the line
         cv2.putText(image, text, (mid_x - 15, mid_y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 0), 1)
 
-        # Save the fully annotated image to your images folder
         measured_path = image_path.replace(".jpg", "_measured.jpg")
         cv2.imwrite(measured_path, image)
+
+
+        # B) Save the "Lines Only" diagnostic view
+        # Create a completely black canvas of the exact same size as the cropped image
+        black_canvas = np.zeros_like(image)
+        
+        # Draw the literal outlines it found in white (1px thickness)
+        cv2.drawContours(black_canvas, [ridge_contour, drop_contour], -1, (255, 255, 255), 1)
+        
+        # Draw the measurement line and center dots on the black canvas too
+        cv2.line(black_canvas, (cX_ridge, cY_ridge), (cX_drop, cY_drop), (0, 255, 0), 2)
+        cv2.circle(black_canvas, (cX_ridge, cY_ridge), 2, (0, 0, 255), -1)
+        cv2.circle(black_canvas, (cX_drop, cY_drop), 2, (0, 0, 255), -1)
+        cv2.putText(black_canvas, text, (mid_x - 15, mid_y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 0), 1)
+
+        lines_path = image_path.replace(".jpg", "_lines.jpg")
+        cv2.imwrite(lines_path, black_canvas)
         # ----------------------------------
 
         return float(error_distance_mm)
@@ -90,18 +102,13 @@ def get_single_measurement(image_path: str) -> float:
         print(f"Error during OpenCV processing: {e}")
         return None
 
-
+# --- INDEPENDENT EXECUTION BLOCK ---
+# This will only run if you execute this script directly from the terminal.
 if __name__ == "__main__":
-    # Put the path to an existing raw image you want to test here:
     test_image_path = "images/plate_image_iter_0.jpg" 
-    
     print(f"--- Running Independent Test on {test_image_path} ---")
-    
-    # Call the function
     result = get_single_measurement(test_image_path)
-    
     if result is not None:
         print(f"Success! Calculated Error Distance: {result:.3f} mm")
-        print("Check your folder for the _cropped.jpg and _measured.jpg files.")
     else:
-        print("Test failed. Check the error messages above.")
+        print("Test failed.")
