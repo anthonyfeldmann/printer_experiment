@@ -22,7 +22,7 @@ def get_single_measurement(image_path: str) -> float:
         # --- CROPPING LOGIC (REGION OF INTEREST) ---
         y_start = 215
         y_end = 240
-        x_start = 350
+        x_start = 370
         x_end = 450
 
         # Apply the exact pixel crop
@@ -40,7 +40,7 @@ def get_single_measurement(image_path: str) -> float:
         
         # 3. Threshold the image to isolate the dark objects (ridge and drop)
         # 60 is the darkness cutoff. Anything darker than 60 becomes white (a shape), anything lighter becomes black (background).
-        _, thresh = cv2.threshold(blurred, 60, 255, cv2.THRESH_BINARY_INV)
+        _, thresh = cv2.threshold(blurred, 100, 255, cv2.THRESH_BINARY_INV)
         
         # --- NEW: SAVE THRESHOLD DIAGNOSTIC ---
         # We save this BEFORE the contour check so you can see why it's failing
