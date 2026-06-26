@@ -20,7 +20,7 @@ steps:
         target: printer_deck
 
   - name: Generate and Print Target Ridge
-    node: prusa_mk4s
+    node: prusa_alpha
     action: slice_and_print
     use_parameters:
       args: 
