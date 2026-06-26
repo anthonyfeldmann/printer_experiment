@@ -103,4 +103,24 @@ def get_single_measurement(image_path: str) -> float:
         lines_path = f"{base_name}_lines{ext}"
         cv2.imwrite(lines_path, black_canvas)
         print(f"[Driver] Saved lines-only view to: {lines_path}")
-        #
+        # ----------------------------------
+
+        return float(error_distance_mm)
+
+    except Exception as e:
+        print(f"Error during OpenCV processing: {e}")
+        return None
+
+# --- INDEPENDENT EXECUTION BLOCK ---
+if __name__ == "__main__":
+    # Put the path to an existing raw image you want to test here:
+    test_image_path = "images/plate_image_iter_0.jpg" 
+    
+    print(f"--- Running Independent Test on {test_image_path} ---")
+    
+    result = get_single_measurement(test_image_path)
+    
+    if result is not None:
+        print(f"\nSuccess! Calculated Error Distance: {result:.3f} mm")
+    else:
+        print("\nTest failed.")
