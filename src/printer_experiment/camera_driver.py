@@ -5,7 +5,7 @@ import os
 def get_single_measurement(image_path: str) -> float:
     """
     Reads a saved image from the MADSci workflow, crops it, processes it to find 
-    the distance, and saves visual overlays (including a line-only diagnostic view).
+    the distance, and saves diagnostic overlays to troubleshoot the OpenCV logic.
     """
     # 1. Load the image from the file path
     image = cv2.imread(image_path)
@@ -15,10 +15,9 @@ def get_single_measurement(image_path: str) -> float:
         return None
 
     try:
-        # Safely extract the base name and extension (handles .jpg, .JPG, .png, etc.)
         base_name, ext = os.path.splitext(image_path)
         if ext == '':
-            ext = '.jpg' # Fallback just in case
+            ext = '.jpg'
 
         # --- CROPPING LOGIC (REGION OF INTEREST) ---
         y_start = 215
@@ -40,13 +39,22 @@ def get_single_measurement(image_path: str) -> float:
         blurred = cv2.GaussianBlur(gray, (5, 5), 0)
         
         # 3. Threshold the image to isolate the dark objects (ridge and drop)
+        # 60 is the darkness cutoff. Anything darker than 60 becomes white (a shape), anything lighter becomes black (background).
         _, thresh = cv2.threshold(blurred, 60, 255, cv2.THRESH_BINARY_INV)
+        
+        # --- NEW: SAVE THRESHOLD DIAGNOSTIC ---
+        # We save this BEFORE the contour check so you can see why it's failing
+        thresh_path = f"{base_name}_thresh{ext}"
+        cv2.imwrite(thresh_path, thresh)
+        print(f"[Driver] Saved threshold view to: {thresh_path}")
+        # --------------------------------------
 
         # 4. Find the contours (shapes) in the image
         contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
         if len(contours) < 2:
             print("Warning: Could not detect both the ridge and the drop clearly in the cropped frame.")
+            print(f"-> Open {thresh_path} to see what OpenCV is detecting.")
             return 50.0
 
         # Sort the contours by area to identify which is which
@@ -71,8 +79,7 @@ def get_single_measurement(image_path: str) -> float:
         error_distance_mm = pixel_distance * mm_per_pixel
 
         # --- VISUAL ANNOTATION & SAVING ---
-        
-        # A) Save the standard overlay (over the real picture)
+        # A) Save the standard overlay
         cv2.line(image, (cX_ridge, cY_ridge), (cX_drop, cY_drop), (0, 255, 0), 2)
         cv2.circle(image, (cX_ridge, cY_ridge), 2, (0, 0, 255), -1)
         cv2.circle(image, (cX_drop, cY_drop), 2, (0, 0, 255), -1)
@@ -86,15 +93,12 @@ def get_single_measurement(image_path: str) -> float:
         cv2.imwrite(measured_path, image)
         print(f"[Driver] Saved measured view to: {measured_path}")
 
-
         # B) Save the "Lines Only" diagnostic view
         black_canvas = np.zeros_like(image)
         
-        # Drawn safely one at a time to prevent array binding errors
         cv2.drawContours(black_canvas, [ridge_contour], -1, (255, 255, 255), 1)
         cv2.drawContours(black_canvas, [drop_contour], -1, (255, 255, 255), 1)
         
-        # Draw the measurement line and center dots on the black canvas too
         cv2.line(black_canvas, (cX_ridge, cY_ridge), (cX_drop, cY_drop), (0, 255, 0), 2)
         cv2.circle(black_canvas, (cX_ridge, cY_ridge), 2, (0, 0, 255), -1)
         cv2.circle(black_canvas, (cX_drop, cY_drop), 2, (0, 0, 255), -1)
@@ -113,14 +117,15 @@ def get_single_measurement(image_path: str) -> float:
 
 # --- INDEPENDENT EXECUTION BLOCK ---
 if __name__ == "__main__":
-    # Put the path to an existing raw image you want to test here:
     test_image_path = "images/plate_image_iter_0.jpg" 
-    
     print(f"--- Running Independent Test on {test_image_path} ---")
     
     result = get_single_measurement(test_image_path)
     
     if result is not None:
-        print(f"\nSuccess! Calculated Error Distance: {result:.3f} mm")
+        if result == 50.0:
+            print("\nTest failed to find the shapes. Check the _thresh.jpg file!")
+        else:
+            print(f"\nSuccess! Calculated Error Distance: {result:.3f} mm")
     else:
-        print("\nTest failed.")
+        print("\nTest encountered a fatal error.")
