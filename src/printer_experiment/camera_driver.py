@@ -1,5 +1,6 @@
 import cv2
 import numpy as np
+import os
 
 def get_single_measurement(image_path: str) -> float:
     """
@@ -14,18 +15,24 @@ def get_single_measurement(image_path: str) -> float:
         return None
 
     try:
+        # Safely extract the base name and extension (handles .jpg, .JPG, .png, etc.)
+        base_name, ext = os.path.splitext(image_path)
+        if ext == '':
+            ext = '.jpg' # Fallback just in case
+
         # --- CROPPING LOGIC (REGION OF INTEREST) ---
         y_start = 215
         y_end = 240
-        x_start = 360
+        x_start = 350
         x_end = 450
 
         # Apply the exact pixel crop
         image = image[y_start:y_end, x_start:x_end]
         
         # Save the raw cropped frame to disk
-        cropped_path = image_path.replace(".jpg", "_cropped.jpg")
+        cropped_path = f"{base_name}_cropped{ext}"
         cv2.imwrite(cropped_path, image)
+        print(f"[Driver] Saved cropped view to: {cropped_path}")
         # --------------------------------
 
         # 2. Convert to grayscale and apply a blur to reduce noise
@@ -75,16 +82,17 @@ def get_single_measurement(image_path: str) -> float:
         mid_y = (cY_ridge + cY_drop) // 2
         cv2.putText(image, text, (mid_x - 15, mid_y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 0), 1)
 
-        measured_path = image_path.replace(".jpg", "_measured.jpg")
+        measured_path = f"{base_name}_measured{ext}"
         cv2.imwrite(measured_path, image)
+        print(f"[Driver] Saved measured view to: {measured_path}")
 
 
         # B) Save the "Lines Only" diagnostic view
-        # Create a completely black canvas of the exact same size as the cropped image
         black_canvas = np.zeros_like(image)
         
-        # Draw the literal outlines it found in white (1px thickness)
-        cv2.drawContours(black_canvas, [ridge_contour, drop_contour], -1, (255, 255, 255), 1)
+        # Drawn safely one at a time to prevent array binding errors
+        cv2.drawContours(black_canvas, [ridge_contour], -1, (255, 255, 255), 1)
+        cv2.drawContours(black_canvas, [drop_contour], -1, (255, 255, 255), 1)
         
         # Draw the measurement line and center dots on the black canvas too
         cv2.line(black_canvas, (cX_ridge, cY_ridge), (cX_drop, cY_drop), (0, 255, 0), 2)
@@ -92,23 +100,7 @@ def get_single_measurement(image_path: str) -> float:
         cv2.circle(black_canvas, (cX_drop, cY_drop), 2, (0, 0, 255), -1)
         cv2.putText(black_canvas, text, (mid_x - 15, mid_y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 0), 1)
 
-        lines_path = image_path.replace(".jpg", "_lines.jpg")
+        lines_path = f"{base_name}_lines{ext}"
         cv2.imwrite(lines_path, black_canvas)
-        # ----------------------------------
-
-        return float(error_distance_mm)
-
-    except Exception as e:
-        print(f"Error during OpenCV processing: {e}")
-        return None
-
-# --- INDEPENDENT EXECUTION BLOCK ---
-# This will only run if you execute this script directly from the terminal.
-if __name__ == "__main__":
-    test_image_path = "images/plate_image_iter_0.jpg" 
-    print(f"--- Running Independent Test on {test_image_path} ---")
-    result = get_single_measurement(test_image_path)
-    if result is not None:
-        print(f"Success! Calculated Error Distance: {result:.3f} mm")
-    else:
-        print("Test failed.")
+        print(f"[Driver] Saved lines-only view to: {lines_path}")
+        #
