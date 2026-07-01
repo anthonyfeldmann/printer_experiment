@@ -2,7 +2,7 @@ import cv2
 import numpy as np
 import os
 
-def get_single_measurement(image_path: str, target_bucket: int = 1) -> float:
+def get_single_measurement(image_path: str, target_bucket: int = 2) -> float:
     """
     Reads a saved image, mathematically slices the plate into 3 equal sections,
     and measures the drop distance in the requested bucket.
