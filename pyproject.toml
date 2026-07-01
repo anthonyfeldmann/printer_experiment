@@ -16,7 +16,8 @@ dependencies = [
     "scikit-optimize>=0.10.2",
     "opencv-python>=4.11.0.86",
     "globus-compute-sdk>=3.11.0",
-    "jupyter>=1.1.1"
+    "jupyter>=1.1.1",
+    "filelock"
 ]
 requires-python = ">=3.11"
 readme = "README.md"
