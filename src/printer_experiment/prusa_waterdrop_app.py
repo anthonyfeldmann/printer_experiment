@@ -1,4 +1,6 @@
 import os
+import time
+import traceback
 from pathlib import Path
 from typing import Optional
 import numpy as np
@@ -25,8 +27,10 @@ class PrusaWaterDropConfig(ExperimentApplicationConfig):
     update_node_files: bool = False
 
     iterations: int = Field(default=10, gt=0)
-    min_length: float = Field(default=5.0)
-    max_length: float = Field(default=65.0)
+    
+    # You can adjust your guessing limits here!
+    min_length: float = Field(default=20.0)
+    max_length: float = Field(default=60.0)
 
 class PrusaWaterDropExperiment(ExperimentApplication):
     config = PrusaWaterDropConfig()
@@ -56,46 +60,63 @@ class PrusaWaterDropExperiment(ExperimentApplication):
 
     def loop(self, iteration: int) -> None:
 
+        # 1. Ask optimizer and round to a physically printable number (2 decimal places)
         suggested_x = self.opt.ask()
-        ridge_length = float(suggested_x[0])
+        ridge_length = round(float(suggested_x[0]), 2)
+        
+        # Keep track of what we actually printed to tell the optimizer later
+        executed_x = [ridge_length]
 
         self.logger.info(f"--- Iteration {iteration + 1} ---")
         console.print(f"Target length: {ridge_length:.2f} mm")
-        
-        # NOTE: This overrides the optimizer's suggestion! 
-        # Comment this out when you are ready for autonomous optimization.
-        # ridge_length = 35.7438
 
         # Starts Workflow
         workflow = self.workcell_client.start_workflow(
             workflow_definition=self.experiment_workflow,
             json_inputs={
-                "length": ridge_length  # Top-level flattened dictionary variable
+                "length": ridge_length  
             },
             file_inputs={
                 "ot2_protocol": str(self.config.protocol_directory / "OT2_CADauto.py")
             }
         )
 
+        console.print("[bold yellow]Executing physical workflow. Waiting for robots to finish...[/bold yellow]")
+        
+        # --- WAIT FOR REALITY TO CATCH UP ---
+        try:
+            workflow.wait() 
+        except AttributeError:
+            while workflow.state.lower() not in ["completed", "failed", "aborted"]:
+                time.sleep(10)
+                workflow = self.workcell_client.get_workflow(workflow.run_id) 
+        # ------------------------------------
+        
+        console.print("[bold green]Workflow complete! Retrieving image...[/bold green]")
+
         image_path = self.config.image_directory / f"plate_image_iter_{iteration}.jpg"
 
-        self.data_client.save_datapoint_value(  # type: ignore[attr-defined]
-            workflow.get_datapoint_id(step_key="take_picture"),
-            image_path,
+        # Explicitly cast image_path to str() and use step_name
+        self.data_client.save_datapoint_value( 
+            workflow.get_datapoint_id(step_name="Take Picture"), 
+            str(image_path),
         )
 
         console.print("Processing measurement from workflow image...")
         error_distance = camera_driver.get_single_measurement(image_path=str(image_path))
 
+        # Assign a penalty score instead of crashing if OpenCV fails
         if error_distance is None:
-             raise RuntimeError("OpenCV failed to process the image")
-
-        error_y = abs(float(error_distance))
-        self.opt.tell(suggested_x, error_y)
+            console.print("[bold red]WARNING: OpenCV failed to process the image![/bold red]")
+            console.print("Assigning penalty score to optimizer to flag a failed state.")
+            error_y = 100.0  
+        else:
+            error_y = abs(float(error_distance))
+            
+        # Tell the optimizer the exact rounded value we printed and how far off it was
+        self.opt.tell(executed_x, error_y)
 
         console.print(f"Result: {error_y} mm off.\n")
-
-        # --------------------------------
 
     def run_experiment(self) -> None:
         console.print("Starting experiment...")
@@ -105,11 +126,12 @@ class PrusaWaterDropExperiment(ExperimentApplication):
                 self.loop(iteration)
                 
                 # --- MANUAL PAUSE ---
-                # The script will freeze here until you press Enter.
                 input("\nAction Required: Please clear the print bed, verify the system is safe, and press [ENTER] to begin the next cycle...\n")
 
         except Exception as e:
             self.logger.error(f"Experiment stopped: {e}")
+            # This will print the exact line of code that caused the crash!
+            console.print(traceback.format_exc())
 
         finally:
             console.print("\nDone")
