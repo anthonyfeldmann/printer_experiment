@@ -2,12 +2,11 @@ import cv2
 import numpy as np
 import os
 
-def get_single_measurement(image_path: str) -> float:
+def get_single_measurement(image_path: str, target_bucket: int = 1) -> float:
     """
-    Reads a saved image from the MADSci workflow, crops it, processes it to find 
-    the distance, and saves diagnostic overlays to troubleshoot the OpenCV logic.
+    Reads a saved image, mathematically slices the plate into 3 equal sections,
+    and measures the drop distance in the requested bucket.
     """
-    # 1. Load the image from the file path
     image = cv2.imread(image_path)
 
     if image is None:
@@ -19,19 +18,34 @@ def get_single_measurement(image_path: str) -> float:
         if ext == '':
             ext = '.jpg'
 
-        # --- CROPPING LOGIC (REGION OF INTEREST) ---
+        # --- NEW: MATHEMATICAL SLICING LOGIC ---
+        # 1. Define the Master Bounding Box that covers ALL THREE buckets
         y_start = 215
         y_end = 240
-        x_start = 375
-        x_end = 445
-
-        # Apply the exact pixel crop
-        image = image[y_start:y_end, x_start:x_end]
         
-        # Save the raw cropped frame to disk
-        cropped_path = f"{base_name}_cropped{ext}"
+        # You may need to adjust master_x_end to make sure it covers the far right edge of Bucket 3!
+        master_x_start = 375
+        master_x_end = 650 
+        
+        # 2. Calculate the exact width of one single bucket
+        total_width = master_x_end - master_x_start
+        bucket_width = total_width // 3
+
+        # 3. Shift the starting point based on the requested bucket (1, 2, or 3)
+        # Bucket 1 shifts 0 times. Bucket 2 shifts 1 time. Bucket 3 shifts 2 times.
+        shift_multiplier = target_bucket - 1
+        
+        target_x_start = master_x_start + (bucket_width * shift_multiplier)
+        target_x_end = target_x_start + bucket_width
+
+        # Apply the mathematically calculated crop
+        image = image[y_start:y_end, target_x_start:target_x_end]
+        
+        # Save the raw cropped frame to disk so you can verify it framed the right section!
+        cropped_path = f"{base_name}_bucket_{target_bucket}_cropped{ext}"
         cv2.imwrite(cropped_path, image)
-        print(f"[Driver] Saved cropped view to: {cropped_path}")
+        print(f"[Driver] Saved cropped view of Bucket {target_bucket} to: {cropped_path}")
+
         # --------------------------------
 
         # 2. Convert to grayscale and apply a blur to reduce noise
