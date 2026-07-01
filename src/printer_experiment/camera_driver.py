@@ -18,12 +18,12 @@ def get_single_measurement(image_path: str, target_bucket: int = 2) -> float:
         if ext == '':
             ext = '.jpg'
 
-        # --- NEW: MATHEMATICAL SLICING LOGIC ---
+    
         # 1. Define the Master Bounding Box that covers ALL THREE buckets
         y_start = 215
         y_end = 240
         
-        # You may need to adjust master_x_end to make sure it covers the far right edge of Bucket 3!
+ 
         master_x_start = 375
         master_x_end = 650 
         
@@ -41,7 +41,7 @@ def get_single_measurement(image_path: str, target_bucket: int = 2) -> float:
         # Apply the mathematically calculated crop
         image = image[y_start:y_end, target_x_start:target_x_end]
         
-        # Save the raw cropped frame to disk so you can verify it framed the right section!
+    
         cropped_path = f"{base_name}_bucket_{target_bucket}_cropped{ext}"
         cv2.imwrite(cropped_path, image)
         print(f"[Driver] Saved cropped view of Bucket {target_bucket} to: {cropped_path}")
