@@ -64,7 +64,7 @@ class PrusaWaterDropExperiment(ExperimentApplication):
         
         # NOTE: This overrides the optimizer's suggestion! 
         # Comment this out when you are ready for autonomous optimization.
-        ridge_length = 35.7438
+        # ridge_length = 35.7438
 
         # Starts Workflow
         workflow = self.workcell_client.start_workflow(
