@@ -5,7 +5,7 @@ import os
 def get_single_measurement(image_path: str, target_bucket: int = 2) -> float:
     """
     Reads a saved image, mathematically slices the plate into 3 equal sections,
-    and measures the drop distance in the requested bucket.
+    shrinks the crop box to ignore borders, and measures the drop distance in the requested bucket.
     """
     image = cv2.imread(image_path)
 
@@ -18,12 +18,10 @@ def get_single_measurement(image_path: str, target_bucket: int = 2) -> float:
         if ext == '':
             ext = '.jpg'
 
-    
         # 1. Define the Master Bounding Box that covers ALL THREE buckets
         y_start = 215
         y_end = 240
         
- 
         master_x_start = 375
         master_x_end = 650 
         
@@ -31,20 +29,25 @@ def get_single_measurement(image_path: str, target_bucket: int = 2) -> float:
         total_width = master_x_end - master_x_start
         bucket_width = total_width // 3
 
-        # 3. Shift the starting point based on the requested bucket (1, 2, or 3)
-        # Bucket 1 shifts 0 times. Bucket 2 shifts 1 time. Bucket 3 shifts 2 times.
+        # 3. Find the true boundaries for the requested bucket
         shift_multiplier = target_bucket - 1
-        
-        target_x_start = master_x_start + (bucket_width * shift_multiplier)
-        target_x_end = target_x_start + bucket_width
+        true_x_start = master_x_start + (bucket_width * shift_multiplier)
+        true_x_end = true_x_start + bucket_width
 
-        # Apply the mathematically calculated crop
-        image = image[y_start:y_end, target_x_start:target_x_end]
+        # --- NEW: IGNORE THE BORDERS ---
+        # Define how many pixels to ignore on the left and right sides of the bucket.
+        x_margin = 15  
         
-    
-        cropped_path = f"{base_name}_bucket_{target_bucket}_cropped{ext}"
+        # Shrink the bounding box inwards
+        center_x_start = true_x_start + x_margin
+        center_x_end = true_x_end - x_margin
+
+        # Apply the mathematically centered crop
+        image = image[y_start:y_end, center_x_start:center_x_end]
+        
+        cropped_path = f"{base_name}_bucket_{target_bucket}_centered_cropped{ext}"
         cv2.imwrite(cropped_path, image)
-        print(f"[Driver] Saved cropped view of Bucket {target_bucket} to: {cropped_path}")
+        print(f"[Driver] Saved centered view of Bucket {target_bucket} to: {cropped_path}")
 
         # --------------------------------
 
