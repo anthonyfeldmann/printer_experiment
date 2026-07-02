@@ -7,7 +7,7 @@ def get_single_measurement(image_path: str, target_bucket: int = 2) -> float:
     """
     Reads a saved image, mathematically slices the plate into 3 equal sections,
     shrinks the crop box to ignore borders, and measures the drop distance.
-    Saves all diagnostic images with a unique timestamp.
+    Saves the raw crop, centered crop, and lines-only diagnostic images.
     """
     image = cv2.imread(image_path)
 
@@ -39,6 +39,12 @@ def get_single_measurement(image_path: str, target_bucket: int = 2) -> float:
         true_x_start = master_x_start + (bucket_width * shift_multiplier)
         true_x_end = true_x_start + bucket_width
 
+        # --- SAVE THE RAW CROP (Before Margins) ---
+        raw_crop_image = image[y_start:y_end, true_x_start:true_x_end]
+        raw_cropped_path = f"{base_name}_{timestamp}_bucket_{target_bucket}_raw_cropped{ext}"
+        cv2.imwrite(raw_cropped_path, raw_crop_image)
+        print(f"[Driver] Saved raw cropped view to: {raw_cropped_path}")
+
         # --- IGNORE THE BORDERS ---
         x_margin = 5
         
@@ -49,11 +55,10 @@ def get_single_measurement(image_path: str, target_bucket: int = 2) -> float:
         # Apply the mathematically centered crop
         image = image[y_start:y_end, center_x_start:center_x_end]
         
-        # Add the timestamp to the filename
-        cropped_path = f"{base_name}_{timestamp}_bucket_{target_bucket}_centered_cropped{ext}"
-        cv2.imwrite(cropped_path, image)
-        print(f"[Driver] Saved centered view of Bucket {target_bucket} to: {cropped_path}")
-
+        # Save the centered crop (After Margins)
+        centered_path = f"{base_name}_{timestamp}_bucket_{target_bucket}_centered_cropped{ext}"
+        cv2.imwrite(centered_path, image)
+        print(f"[Driver] Saved centered view to: {centered_path}")
         # --------------------------------
 
         # 2. Convert to grayscale and apply a blur to reduce noise
@@ -63,18 +68,11 @@ def get_single_measurement(image_path: str, target_bucket: int = 2) -> float:
         # 3. Threshold the image to isolate the dark objects (ridge and drop)
         _, thresh = cv2.threshold(blurred, 100, 255, cv2.THRESH_BINARY_INV)
         
-        # Add the timestamp to the threshold diagnostic
-        thresh_path = f"{base_name}_{timestamp}_thresh{ext}"
-        cv2.imwrite(thresh_path, thresh)
-        print(f"[Driver] Saved threshold view to: {thresh_path}")
-        # --------------------------------------
-
         # 4. Find the contours (shapes) in the image
         contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
         if len(contours) < 2:
             print("Warning: Could not detect both the ridge and the drop clearly in the cropped frame.")
-            print(f"-> Open {thresh_path} to see what OpenCV is detecting.")
             return 50.0
 
         # Sort the contours by area to identify which is which
@@ -99,22 +97,11 @@ def get_single_measurement(image_path: str, target_bucket: int = 2) -> float:
         error_distance_mm = pixel_distance * mm_per_pixel
 
         # --- VISUAL ANNOTATION & SAVING ---
-        # A) Save the standard overlay
-        cv2.line(image, (cX_ridge, cY_ridge), (cX_drop, cY_drop), (0, 255, 0), 2)
-        cv2.circle(image, (cX_ridge, cY_ridge), 2, (0, 0, 255), -1)
-        cv2.circle(image, (cX_drop, cY_drop), 2, (0, 0, 255), -1)
-        
         text = f"{error_distance_mm:.2f} mm"
         mid_x = (cX_ridge + cX_drop) // 2
         mid_y = (cY_ridge + cY_drop) // 2
-        cv2.putText(image, text, (mid_x - 15, mid_y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 0), 1)
-
-        # Add the timestamp to the measured output
-        measured_path = f"{base_name}_{timestamp}_measured{ext}"
-        cv2.imwrite(measured_path, image)
-        print(f"[Driver] Saved measured view to: {measured_path}")
-
-        # B) Save the "Lines Only" diagnostic view
+        
+        # Save the "Lines Only" diagnostic view
         black_canvas = np.zeros_like(image)
         
         cv2.drawContours(black_canvas, [ridge_contour], -1, (255, 255, 255), 1)
@@ -126,28 +113,4 @@ def get_single_measurement(image_path: str, target_bucket: int = 2) -> float:
         cv2.putText(black_canvas, text, (mid_x - 15, mid_y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 0), 1)
 
         # Add the timestamp to the lines output
-        lines_path = f"{base_name}_{timestamp}_lines{ext}"
-        cv2.imwrite(lines_path, black_canvas)
-        print(f"[Driver] Saved lines-only view to: {lines_path}")
-        # ----------------------------------
-
-        return float(error_distance_mm)
-
-    except Exception as e:
-        print(f"Error during OpenCV processing: {e}")
-        return None
-
-# --- INDEPENDENT EXECUTION BLOCK ---
-if __name__ == "__main__":
-    test_image_path = "images/plate_image_iter_0.jpg" 
-    print(f"--- Running Independent Test on {test_image_path} ---")
-    
-    result = get_single_measurement(test_image_path)
-    
-    if result is not None:
-        if result == 50.0:
-            print("\nTest failed to find the shapes. Check the _thresh.jpg file!")
-        else:
-            print(f"\nSuccess! Calculated Error Distance: {result:.3f} mm")
-    else:
-        print("\nTest encountered a fatal error.")
+        lines_path = f"{base_name}_{timestamp
