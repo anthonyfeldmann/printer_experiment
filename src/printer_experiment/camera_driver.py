@@ -40,7 +40,7 @@ def get_single_measurement(image_path: str, target_bucket: int = 2) -> float:
         true_x_end = true_x_start + bucket_width
 
         # --- IGNORE THE BORDERS ---
-        x_margin = 10
+        x_margin = 5
         
         # Shrink the bounding box inwards
         center_x_start = true_x_start + x_margin
@@ -61,7 +61,7 @@ def get_single_measurement(image_path: str, target_bucket: int = 2) -> float:
         blurred = cv2.GaussianBlur(gray, (5, 5), 0)
         
         # 3. Threshold the image to isolate the dark objects (ridge and drop)
-        _, thresh = cv2.threshold(blurred, 80, 255, cv2.THRESH_BINARY_INV)
+        _, thresh = cv2.threshold(blurred, 100, 255, cv2.THRESH_BINARY_INV)
         
         # Add the timestamp to the threshold diagnostic
         thresh_path = f"{base_name}_{timestamp}_thresh{ext}"
