@@ -113,4 +113,28 @@ def get_single_measurement(image_path: str, target_bucket: int = 2) -> float:
         cv2.putText(black_canvas, text, (mid_x - 15, mid_y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 0), 1)
 
         # Add the timestamp to the lines output
-        lines_path = f"{base_name}_{timestamp
+        lines_path = f"{base_name}_{timestamp}_lines{ext}"
+        cv2.imwrite(lines_path, black_canvas)
+        print(f"[Driver] Saved lines-only view to: {lines_path}")
+        # ----------------------------------
+
+        return float(error_distance_mm)
+
+    except Exception as e:
+        print(f"Error during OpenCV processing: {e}")
+        return None
+
+# --- INDEPENDENT EXECUTION BLOCK ---
+if __name__ == "__main__":
+    test_image_path = "images/plate_image_iter_0.jpg" 
+    print(f"--- Running Independent Test on {test_image_path} ---")
+    
+    result = get_single_measurement(test_image_path)
+    
+    if result is not None:
+        if result == 50.0:
+            print("\nTest failed to find the shapes. Check the raw vs centered images!")
+        else:
+            print(f"\nSuccess! Calculated Error Distance: {result:.3f} mm")
+    else:
+        print("\nTest encountered a fatal error.")
