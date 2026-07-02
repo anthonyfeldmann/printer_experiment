@@ -5,8 +5,9 @@ import time
 
 def get_single_measurement(image_path: str, target_bucket: int = 2) -> float:
     """
-    Reads a saved image, applies a master crop, dynamically divides it into columns,
-    and applies a percentage-based margin to ignore bucket walls.
+    Reads a saved image, crops it using explicit hardcoded pixel coordinates,
+    and measures the drop distance.
+    Saves EVERY stage of the vision pipeline for debugging.
     """
     image = cv2.imread(image_path)
 
@@ -19,6 +20,7 @@ def get_single_measurement(image_path: str, target_bucket: int = 2) -> float:
         if ext == '':
             ext = '.jpg'
 
+        # Generate a unique timestamp for this specific run
         timestamp = int(time.time())
 
         # 1. SAVE THE ORIGINAL UNCROPPED IMAGE
@@ -26,51 +28,35 @@ def get_single_measurement(image_path: str, target_bucket: int = 2) -> float:
         cv2.imwrite(original_path, image)
         print(f"[Driver] Saved original uncropped view to: {original_path}")
 
-        # --- NEW: MASTER CROP FIRST ---
-        # Define the Master Bounding Box that covers ALL THREE buckets
-        y_start = 215
-        y_end = 240
-        master_x_start = 375
-        master_x_end = 650 
-        
-        # Slice the entire plate region out first
-        master_roi = image[y_start:y_end, master_x_start:master_x_end]
+        # --- THE EXPLICIT DICTIONARY CROPPING METHOD ---
+        # Format is (Y_start, Y_end, X_start, X_end)
+        crop_regions = {
+            1: (216, 241, 380, 397),  
+            2: (216, 242, 405, 421),  
+            3: (216, 241, 428, 443)   
+        }
 
-        # --- NEW: DYNAMIC COLUMN SPLIT ---
-        # Ask OpenCV how wide the master image is, and divide by 3 buckets
-        height, width = master_roi.shape[:2]
-        num_buckets = 3
-        roi_width = width // num_buckets
-        
-        # Calculate target boundaries based on the column width
-        bucket_idx = target_bucket - 1
-        x_start = bucket_idx * roi_width
-        x_end = (bucket_idx + 1) * roi_width
+        if target_bucket not in crop_regions:
+            print(f"Error: Bucket {target_bucket} is not defined.")
+            return None
 
-        # 2. SAVE THE RAW CROP (Before Margins)
-        raw_crop_image = master_roi[:, x_start:x_end]
-        raw_cropped_path = f"{base_name}_{timestamp}_bucket_{target_bucket}_raw_cropped{ext}"
-        cv2.imwrite(raw_cropped_path, raw_crop_image)
-        print(f"[Driver] Saved raw cropped view to: {raw_cropped_path}")
+        # Fetch the exact coordinates you hardcoded
+        y_start, y_end, x_start, x_end = crop_regions[target_bucket]
 
-        # --- NEW: PERCENTAGE-BASED MARGIN ---
-        # Cut off the outer 15% of the column so the algorithm ignores the plastic walls
-        margin = int(roi_width * 0.15)
-        
-        # Apply the margin to get the final centered crop
-        image = master_roi[:, x_start + margin : x_end - margin]
+        # Apply the explicit pixel crop
+        image = image[y_start:y_end, x_start:x_end]
 
-        # 3. SAVE THE CENTERED CROP (After Margins)
-        centered_path = f"{base_name}_{timestamp}_bucket_{target_bucket}_centered_cropped{ext}"
-        cv2.imwrite(centered_path, image)
-        print(f"[Driver] Saved centered view to: {centered_path}")
+        # 2. SAVE THE CROPPED VIEW
+        cropped_path = f"{base_name}_{timestamp}_bucket_{target_bucket}_cropped{ext}"
+        cv2.imwrite(cropped_path, image)
+        print(f"[Driver] Saved cropped view to: {cropped_path}")
         # ------------------------------------------------
 
         # Convert to grayscale and apply a blur to reduce noise
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         blurred = cv2.GaussianBlur(gray, (5, 5), 0)
 
-        # 4. SAVE THE THRESHOLD
+        # 3. SAVE THE THRESHOLD
         _, thresh = cv2.threshold(blurred, 60, 255, cv2.THRESH_BINARY_INV) 
         
         thresh_path = f"{base_name}_{timestamp}_bucket_{target_bucket}_thresh{ext}"
@@ -109,7 +95,7 @@ def get_single_measurement(image_path: str, target_bucket: int = 2) -> float:
         mid_x = (cX_ridge + cX_drop) // 2
         mid_y = (cY_ridge + cY_drop) // 2
 
-        # 5. SAVE THE MEASURED OVERLAY
+        # 4. SAVE THE MEASURED OVERLAY
         cv2.line(image, (cX_ridge, cY_ridge), (cX_drop, cY_drop), (0, 255, 0), 2)
         cv2.circle(image, (cX_ridge, cY_ridge), 2, (0, 0, 255), -1)
         cv2.circle(image, (cX_drop, cY_drop), 2, (0, 0, 255), -1)
@@ -119,7 +105,7 @@ def get_single_measurement(image_path: str, target_bucket: int = 2) -> float:
         cv2.imwrite(measured_path, image)
         print(f"[Driver] Saved measured view to: {measured_path}")
 
-        # 6. SAVE THE "LINES ONLY" DIAGNOSTIC VIEW
+        # 5. SAVE THE "LINES ONLY" DIAGNOSTIC VIEW
         black_canvas = np.zeros_like(image)
 
         cv2.drawContours(black_canvas, [ridge_contour], -1, (255, 255, 255), 1)
@@ -142,7 +128,7 @@ def get_single_measurement(image_path: str, target_bucket: int = 2) -> float:
 
 # --- INDEPENDENT EXECUTION BLOCK ---
 if __name__ == "__main__":
-    test_image_path = "images/plate_image_iter_0.jpg"
+    test_image_path = "images/run_1719900000_iter_0.jpg" # Adjust this to a real filename in your images/ folder
     print(f"--- Running Independent Test on {test_image_path} ---")
 
     result = get_single_measurement(test_image_path)
