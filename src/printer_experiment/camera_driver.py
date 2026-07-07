@@ -3,11 +3,10 @@ import numpy as np
 import os
 import time
 
-def get_single_measurement(image_path: str, target_bucket: int = 1) -> float:
+def get_single_measurement(image_path: str, target_bucket: int = 2) -> float:
     """
     Reads a saved image, crops it using explicit hardcoded pixel coordinates,
-    and measures the drop distance.
-    Saves EVERY stage of the vision pipeline for debugging.
+    and measures the distance from the bottom of the bucket to the highest water pixel.
     """
     image = cv2.imread(image_path)
 
@@ -20,16 +19,15 @@ def get_single_measurement(image_path: str, target_bucket: int = 1) -> float:
         if ext == '':
             ext = '.jpg'
 
-        # Generate a unique timestamp for this specific run
         timestamp = int(time.time())
 
-        # 1. SAVE THE ORIGINAL UNCROPPED IMAGE
+        # 1. SAVE ORIGINAL
         original_path = f"{base_name}_{timestamp}_original{ext}"
         cv2.imwrite(original_path, image)
         print(f"[Driver] Saved original uncropped view to: {original_path}")
 
-        # --- THE EXPLICIT DICTIONARY CROPPING METHOD ---
-        # Format is (Y_start, Y_end, X_start, X_end)
+        # --- EXPLICIT DICTIONARY CROPPING ---
+        # Format: (Y_start, Y_end, X_start, X_end)
         crop_regions = {
             1: (216, 241, 380, 397),  
             2: (216, 242, 405, 421),  
@@ -40,85 +38,63 @@ def get_single_measurement(image_path: str, target_bucket: int = 1) -> float:
             print(f"Error: Bucket {target_bucket} is not defined.")
             return None
 
-        # Fetch the exact coordinates you hardcoded
         y_start, y_end, x_start, x_end = crop_regions[target_bucket]
 
         # Apply the explicit pixel crop
         image = image[y_start:y_end, x_start:x_end]
-
-        # 2. SAVE THE CROPPED VIEW
+        
         cropped_path = f"{base_name}_{timestamp}_bucket_{target_bucket}_cropped{ext}"
         cv2.imwrite(cropped_path, image)
-        print(f"[Driver] Saved cropped view to: {cropped_path}")
-        # ------------------------------------------------
 
-        # Convert to grayscale and apply a blur to reduce noise
+        # Convert to grayscale and blur
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         blurred = cv2.GaussianBlur(gray, (5, 5), 0)
 
-        # 3. SAVE THE THRESHOLD
-        _, thresh = cv2.threshold(blurred, 100, 255, cv2.THRESH_BINARY_INV) 
+        # 2. SAVE THRESHOLD
+        # Note: You may need to adjust the '60' based on your recent lighting tuning!
+        _, thresh = cv2.threshold(blurred, 60, 255, cv2.THRESH_BINARY_INV) 
         
         thresh_path = f"{base_name}_{timestamp}_bucket_{target_bucket}_thresh{ext}"
         cv2.imwrite(thresh_path, thresh)
         print(f"[Driver] Saved threshold view to: {thresh_path}")
 
-        # Find the contours (shapes) in the image
-        contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        # --- THE NEW MEASUREMENT LOGIC ---
+        # Find the Y and X coordinates of EVERY white pixel in the cropped image
+        y_coords, x_coords = np.where(thresh == 255)
 
-        if len(contours) < 2:
-            print("Warning: Could not detect both the ridge and the drop clearly in the cropped frame.")
+        height, width = thresh.shape
+
+        if len(y_coords) == 0:
+            print("Warning: No white pixels detected. The fluid missed the crop box entirely.")
             return 50.0
 
-        # Sort the contours by area to identify which is which
-        contours = sorted(contours, key=cv2.contourArea, reverse=True)
-        ridge_contour = contours[0]
-        drop_contour = contours[1]
+        # NOISE REJECTION: Take the 5th percentile of the top pixels to find the solid water line.
+        # This ignores a random single speck of dust or splash.
+        top_y = int(np.percentile(y_coords, 5))
 
-        # Calculate the center points (Centroids) of both shapes
-        M_ridge = cv2.moments(ridge_contour)
-        cX_ridge = int(M_ridge["m10"] / (M_ridge["m00"] + 1e-5))
-        cY_ridge = int(M_ridge["m01"] / (M_ridge["m00"] + 1e-5))
+        # The target is the absolute bottom of the crop box (which is just 'height' in local coordinates)
+        target_y = height
 
-        M_drop = cv2.moments(drop_contour)
-        cX_drop = int(M_drop["m10"] / (M_drop["m00"] + 1e-5))
-        cY_drop = int(M_drop["m01"] / (M_drop["m00"] + 1e-5))
+        # Calculate straight vertical pixel distance
+        pixel_distance = target_y - top_y
 
-        # Calculate the straight-line pixel distance between the two centers
-        pixel_distance = np.sqrt((cX_drop - cX_ridge)**2 + (cY_drop - cY_ridge)**2)
-
-        # Convert pixel distance to millimeters
+        # Convert to millimeters
         mm_per_pixel = 0.264
         error_distance_mm = pixel_distance * mm_per_pixel
 
+        # --- DRAW VISUAL OVERLAYS ---
+        # Draw a blue line at the bottom (target) and a green line at the top of the water
+        cv2.line(image, (0, target_y), (width, target_y), (255, 0, 0), 2) 
+        cv2.line(image, (0, top_y), (width, top_y), (0, 255, 0), 2)
+        
         text = f"{error_distance_mm:.2f} mm"
-        mid_x = (cX_ridge + cX_drop) // 2
-        mid_y = (cY_ridge + cY_drop) // 2
-
-        # 4. SAVE THE MEASURED OVERLAY
-        cv2.line(image, (cX_ridge, cY_ridge), (cX_drop, cY_drop), (0, 255, 0), 2)
-        cv2.circle(image, (cX_ridge, cY_ridge), 2, (0, 0, 255), -1)
-        cv2.circle(image, (cX_drop, cY_drop), 2, (0, 0, 255), -1)
-        cv2.putText(image, text, (mid_x - 15, mid_y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 0), 1)
+        # Shift text down slightly if the water is right at the top of the frame
+        text_y = top_y - 5 if top_y > 15 else top_y + 15
+        cv2.putText(image, text, (2, text_y), cv2.FONT_HERSHEY_SIMPLEX, 0.3, (0, 255, 0), 1)
 
         measured_path = f"{base_name}_{timestamp}_bucket_{target_bucket}_measured{ext}"
         cv2.imwrite(measured_path, image)
         print(f"[Driver] Saved measured view to: {measured_path}")
-
-        # 5. SAVE THE "LINES ONLY" DIAGNOSTIC VIEW
-        black_canvas = np.zeros_like(image)
-
-        cv2.drawContours(black_canvas, [ridge_contour], -1, (255, 255, 255), 1)
-        cv2.drawContours(black_canvas, [drop_contour], -1, (255, 255, 255), 1)
-
-        cv2.line(black_canvas, (cX_ridge, cY_ridge), (cX_drop, cY_drop), (0, 255, 0), 2)
-        cv2.circle(black_canvas, (cX_ridge, cY_ridge), 2, (0, 0, 255), -1)
-        cv2.circle(black_canvas, (cX_drop, cY_drop), 2, (0, 0, 255), -1)
-        cv2.putText(black_canvas, text, (mid_x - 15, mid_y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 0), 1)
-
-        lines_path = f"{base_name}_{timestamp}_bucket_{target_bucket}_lines{ext}"
-        cv2.imwrite(lines_path, black_canvas)
-        print(f"[Driver] Saved lines-only view to: {lines_path}")
 
         return float(error_distance_mm)
 
@@ -128,14 +104,14 @@ def get_single_measurement(image_path: str, target_bucket: int = 1) -> float:
 
 # --- INDEPENDENT EXECUTION BLOCK ---
 if __name__ == "__main__":
-    test_image_path = "images/run_1719900000_iter_0.jpg" # Adjust this to a real filename in your images/ folder
+    test_image_path = "images/run_1719900000_iter_0.jpg" # Adjust to your real file
     print(f"--- Running Independent Test on {test_image_path} ---")
 
     result = get_single_measurement(test_image_path)
 
     if result is not None:
         if result == 50.0:
-            print("\nTest failed to find the shapes. Check the diagnostic images!")
+            print("\nTest failed: Fluid missed target. Penalty applied.")
         else:
             print(f"\nSuccess! Calculated Error Distance: {result:.3f} mm")
     else:
