@@ -3,7 +3,7 @@ import numpy as np
 import os
 import time
 
-def get_single_measurement(image_path: str, target_bucket: int = 2) -> float:
+def get_single_measurement(image_path: str, target_bucket: int = 1) -> float:
     """
     Reads a saved image, crops it using explicit hardcoded pixel coordinates,
     and measures the distance from the bottom of the bucket to the highest water pixel.
@@ -52,7 +52,7 @@ def get_single_measurement(image_path: str, target_bucket: int = 2) -> float:
 
         # 2. SAVE THRESHOLD
         # Note: You may need to adjust the '60' based on your recent lighting tuning!
-        _, thresh = cv2.threshold(blurred, 100, 255, cv2.THRESH_BINARY_INV) 
+        _, thresh = cv2.threshold(blurred, 80, 255, cv2.THRESH_BINARY_INV) 
         
         thresh_path = f"{base_name}_{timestamp}_bucket_{target_bucket}_thresh{ext}"
         cv2.imwrite(thresh_path, thresh)
