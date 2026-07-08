@@ -1,136 +1,125 @@
-import cv2
-import numpy as np
 import os
-import time
+import traceback
+from pathlib import Path
+from typing import Optional
+import numpy as np
+from skopt import Optimizer
 
-def get_single_measurement(image_path: str, target_bucket: int = 1) -> float:
-    """
-    Reads a saved image, crops it using explicit tight pixel coordinates to avoid bucket walls,
-    applies a two-step morphological filter to handle transparent fluid reflections
-    and remove 3D printer stringing, and measures the "Empty Gap" from the top 
-    of the bucket down to the highest water pixel.
-    """
-    image = cv2.imread(image_path)
+from madsci.client import WorkcellClient, DataClient
+from madsci.common.types.base_types import PathLike
+from madsci.experiment_application import ExperimentApplication
+from madsci.experiment_application.experiment_application import ExperimentApplicationConfig
+from madsci.common.types.workflow_types import WorkflowDefinition
+from pydantic import Field
+from rich.console import Console
 
-    if image is None:
-        print(f"Error: OpenCV could not load the image at {image_path}")
-        return None
+import camera_driver
 
-    try:
-        base_name, ext = os.path.splitext(image_path)
-        if ext == '':
-            ext = '.jpg'
+console = Console()
 
-        timestamp = int(time.time())
+class PrusaWaterDropConfig(ExperimentApplicationConfig):
+    workflow_directory: PathLike = (Path(__file__).parent / "workflows").resolve()
+    protocol_directory: PathLike = (Path(__file__).parent / "protocols").resolve()
+    image_directory: PathLike = (Path(__file__).parent / "images").resolve()
+    update_node_files: bool = False
+    
+    iterations: int = Field(default=10, gt=0)
+    min_length: float = Field(default=5.0)
+    max_length: float = Field(default=60.0)
 
-        # 1. SAVE ORIGINAL
-        original_path = f"{base_name}_{timestamp}_original{ext}"
-        cv2.imwrite(original_path, image)
-        print(f"[Driver] Saved original uncropped view to: {original_path}")
+class PrusaWaterDropExperiment(ExperimentApplication):
+    config = PrusaWaterDropConfig()
 
-        # --- EXPLICIT DICTIONARY CROPPING (TIGHT CENTER COLUMN) ---
-        # Format: (Y_start, Y_end, X_start, X_end)
-        # 3 pixels shaved off the left, right, and bottom to avoid plastic glare.
-        # Top edge remains at 216 to maintain the optimizer's zero-target.
-        crop_regions = {
-            1: (216, 238, 383, 394),  
-            2: (216, 239, 408, 418),  
-            3: (216, 238, 431, 440)   
-        }
+    def __init__(self, config: Optional[PrusaWaterDropConfig] = None):
+        if config:
+            self.config = config
+        super().__init__()
 
-        if target_bucket not in crop_regions:
-            print(f"Error: Bucket {target_bucket} is not defined.")
-            return None
+        self.workcell_client = WorkcellClient("http://parker.cels.anl.gov:8005")
+        self.data_client = DataClient("http://parker.cels.anl.gov:8003")
 
-        y_start, y_end, x_start, x_end = crop_regions[target_bucket]
+        yaml_path = self.config.workflow_directory / "autonomous_drop_workflow.yaml"
+        console.print(f"[bold green]LOADING YAML FROM:[/bold green] {yaml_path}")
 
-        # Apply the explicit pixel crop
-        image = image[y_start:y_end, x_start:x_end]
-        
-        cropped_path = f"{base_name}_{timestamp}_bucket_{target_bucket}_cropped{ext}"
-        cv2.imwrite(cropped_path, image)
+        self.experiment_workflow = WorkflowDefinition.from_yaml(yaml_path)
 
-        # Convert to grayscale and blur
-        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-        blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+        self.opt = Optimizer(
+            dimensions=[(self.config.min_length, self.config.max_length)],
+            base_estimator="GP",
+            acq_func="EI",
+            n_initial_points=3,
+            random_state=237
+        )
 
-        # 2. SAVE THRESHOLD
-        # Tuned to 80 to account for ambient lighting interference
-        _, thresh = cv2.threshold(blurred, 80, 255, cv2.THRESH_BINARY_INV) 
-        
-        thresh_path = f"{base_name}_{timestamp}_bucket_{target_bucket}_thresh{ext}"
-        cv2.imwrite(thresh_path, thresh)
-        print(f"[Driver] Saved raw threshold view to: {thresh_path}")
+        self.config.image_directory.mkdir(parents=True, exist_ok=True)
 
-        # --- THE FLUID STRINGING FIX (TWO-STEP FILTER) ---
-        # Step 1: CLOSING. Fill in the holes and plump up the water reflections into a solid block.
-        close_kernel = np.ones((5, 5), np.uint8)
-        solid_thresh = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, close_kernel)
+    def loop(self, iteration: int) -> None:
+        # 1. Ask optimizer and round to a physically printable number (2 decimal places)
+        suggested_x = self.opt.ask()
+        ridge_length = round(float(suggested_x[0]), 2)
+        executed_x = [ridge_length]
 
-        # Step 2: OPENING. Use a smaller, gentle 3x3 eraser to wipe out the thin printer strings.
-        open_kernel = np.ones((3, 3), np.uint8)
-        clean_thresh = cv2.morphologyEx(solid_thresh, cv2.MORPH_OPEN, open_kernel)
+        self.logger.info(f"--- Iteration {iteration + 1} ---")
+        console.print(f"Target length: {ridge_length:.2f} mm")
 
-        # Save this cleaned view so you can visually verify the water survived but the streaks are gone!
-        clean_path = f"{base_name}_{timestamp}_bucket_{target_bucket}_clean{ext}"
-        cv2.imwrite(clean_path, clean_thresh)
-        print(f"[Driver] Saved clean (de-stringed) view to: {clean_path}")
+        # Starts Workflow
+        workflow = self.workcell_client.start_workflow(
+            workflow_definition=self.experiment_workflow,
+            json_inputs={
+                "length": ridge_length  
+            },
+            file_inputs={
+                "ot2_protocol": str(self.config.protocol_directory / "OT2_CADauto.py")
+            }
+        )
 
-        # --- THE GAP MEASUREMENT LOGIC ---
-        # IMPORTANT: We are now asking for the white pixels from 'clean_thresh'
-        y_coords, x_coords = np.where(clean_thresh == 255)
+        image_path = self.config.image_directory / f"plate_image_iter_{iteration}.jpg"
 
-        height, width = clean_thresh.shape
+        # The original image saving logic
+        self.data_client.save_datapoint_value(  # type: ignore[attr-defined]
+            workflow.get_datapoint_id(step_key="take_picture"),
+            image_path,
+        )
 
-        if len(y_coords) == 0:
-            print("Warning: No white pixels detected. The fluid missed the target.")
-            # 50.0 penalty applied so the optimizer knows this ridge length failed
-            return 50.0
+        console.print("Processing measurement from workflow image...")
+        error_distance = camera_driver.get_single_measurement(image_path=str(image_path))
 
-        # Find the highest pixel of the water (the meniscus) using 5th percentile for noise rejection
-        top_y = int(np.percentile(y_coords, 5))
+        # Reverted back to the original failure trigger
+        if error_distance is None:
+             raise RuntimeError("OpenCV failed to process the image")
 
-        # The target is the absolute TOP of the crop box (Y = 0)
-        target_y = 0
+        error_y = abs(float(error_distance))
+        self.opt.tell(executed_x, error_y)
 
-        # Calculate the "Empty Gap" (Distance from the top of the bucket down to the water)
-        pixel_distance = top_y - target_y 
+        console.print(f"Result: {error_y} mm off.\n")
 
-        # Convert to millimeters
-        mm_per_pixel = 0.264
-        error_distance_mm = pixel_distance * mm_per_pixel
+    def run_experiment(self) -> None:
+        console.print("Starting experiment...")
 
-        # --- DRAW VISUAL OVERLAYS ---
-        # Draw a blue line at the top (target) and a green line at the top of the water
-        cv2.line(image, (0, target_y), (width, target_y), (255, 0, 0), 2) 
-        cv2.line(image, (0, top_y), (width, top_y), (0, 255, 0), 2)
-        
-        text = f"Gap: {error_distance_mm:.2f} mm"
-        text_y = top_y + 15 if top_y < 15 else top_y - 5
-        cv2.putText(image, text, (2, text_y), cv2.FONT_HERSHEY_SIMPLEX, 0.3, (0, 255, 0), 1)
+        try:
+            for iteration in range(self.config.iterations):
+                self.loop(iteration)
+                
+                # --- MANUAL PAUSE ---
+                input("\nAction Required: Please clear the print bed, verify the system is safe, and press [ENTER] to begin the next cycle...\n")
 
-        measured_path = f"{base_name}_{timestamp}_bucket_{target_bucket}_measured{ext}"
-        cv2.imwrite(measured_path, image)
-        print(f"[Driver] Saved measured view to: {measured_path}")
+        except Exception as e:
+            self.logger.error(f"Experiment stopped: {e}")
+            console.print(traceback.format_exc())
 
-        return float(error_distance_mm)
+        finally:
+            console.print("\nDone")
 
-    except Exception as e:
-        print(f"Error during OpenCV processing: {e}")
-        return None
+            if len(self.opt.yi) > 0:
+                best_index = np.argmin(self.opt.yi)
+                optimal_length = self.opt.Xi[best_index][0]
+                lowest_error = self.opt.yi[best_index]
 
-# --- INDEPENDENT EXECUTION BLOCK ---
+                console.print(f"[bold gold1]Optimal ridge length found:[/bold gold1] {optimal_length:.2f} mm")
+                console.print(f"[bold gold1]Minimum error achieved:[/bold gold1] {lowest_error:.2f} mm off-target.")
+            else:
+                console.print("Experiment failed before any data was recorded.")
+
 if __name__ == "__main__":
-    test_image_path = "images/run_1719900000_iter_0.jpg" # Adjust to a real image filename
-    print(f"--- Running Independent Test on {test_image_path} ---")
-
-    # Forcing target_bucket=1 for local testing
-    result = get_single_measurement(test_image_path, target_bucket=1)
-
-    if result is not None:
-        if result == 50.0:
-            print("\nTest failed: Fluid missed target. 50.0 mm Penalty applied.")
-        else:
-            print(f"\nSuccess! Calculated Gap Distance: {result:.3f} mm")
-    else:
-        print("\nTest encountered a fatal error.")
+    app = PrusaWaterDropExperiment()
+    app.run_experiment()
