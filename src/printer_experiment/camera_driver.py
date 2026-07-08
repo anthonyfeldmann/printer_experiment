@@ -3,7 +3,7 @@ import numpy as np
 import os
 import time
 
-def get_single_measurement(image_path: str, target_bucket: int = 1) -> float:
+def get_single_measurement(image_path: str, target_bucket: int = 2) -> float:
     """
     Reads a saved image, crops it using explicit hardcoded pixel coordinates,
     and measures the "Empty Gap" from the top of the bucket down to the highest water pixel.
