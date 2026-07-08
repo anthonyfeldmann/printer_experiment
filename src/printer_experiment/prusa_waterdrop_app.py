@@ -24,8 +24,8 @@ class PrusaWaterDropConfig(ExperimentApplicationConfig):
     update_node_files: bool = False
     
     iterations: int = Field(default=10, gt=0)
-    min_length: float = Field(default=10.0)
-    max_length: float = Field(default=65.0)
+    min_length: float = Field(default=5.0)
+    max_length: float = Field(default=60.0)
 
 class PrusaWaterDropExperiment(ExperimentApplication):
     config = PrusaWaterDropConfig()
