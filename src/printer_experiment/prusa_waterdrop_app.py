@@ -82,16 +82,19 @@ class PrusaWaterDropExperiment(ExperimentApplication):
         )
 
         console.print("Processing measurement from workflow image...")
-        error_distance = camera_driver.get_single_measurement(image_path=str(image_path))
+        
+        # This now returns a Master Score where HIGHER is better (Liquid Volume)
+        total_score = camera_driver.get_single_measurement(image_path=str(image_path), target_bucket=1)
 
-        # Reverted back to the original failure trigger
-        if error_distance is None:
+        if total_score is None:
              raise RuntimeError("OpenCV failed to process the image")
 
-        error_y = abs(float(error_distance))
-        self.opt.tell(executed_x, error_y)
+        # --- THE OPTIMIZER FIX ---
+        # skopt is a minimizer. By feeding it the NEGATIVE score, it will naturally 
+        # try to find the "lowest" negative number (which is your highest fluid volume!)
+        self.opt.tell(executed_x, -float(total_score))
 
-        console.print(f"Result: {error_y} mm off.\n")
+        console.print(f"Result: {total_score:.2f} mm fluid score.\n")
 
     def run_experiment(self) -> None:
         console.print("Starting experiment...")
@@ -111,12 +114,15 @@ class PrusaWaterDropExperiment(ExperimentApplication):
             console.print("\nDone")
 
             if len(self.opt.yi) > 0:
+                # The optimizer's lowest number is actually your highest volume because of the negative flip
                 best_index = np.argmin(self.opt.yi)
                 optimal_length = self.opt.Xi[best_index][0]
-                lowest_error = self.opt.yi[best_index]
+                
+                # Flip the sign back so it reads nicely for the human!
+                best_score = -self.opt.yi[best_index]
 
                 console.print(f"[bold gold1]Optimal ridge length found:[/bold gold1] {optimal_length:.2f} mm")
-                console.print(f"[bold gold1]Minimum error achieved:[/bold gold1] {lowest_error:.2f} mm off-target.")
+                console.print(f"[bold gold1]Maximum liquid score achieved:[/bold gold1] {best_score:.2f} mm")
             else:
                 console.print("Experiment failed before any data was recorded.")
 
