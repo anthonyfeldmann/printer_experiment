@@ -3,9 +3,10 @@ import numpy as np
 import os
 import time
 
-def get_single_measurement(image_path: str, target_bucket: int = 2) -> float:
+def get_single_measurement(image_path: str, target_bucket: int = 1) -> float:
     """
     Reads a saved image, crops it using explicit hardcoded pixel coordinates,
+    removes 3D printer stringing noise via morphological opening, 
     and measures the "Empty Gap" from the top of the bucket down to the highest water pixel.
     """
     image = cv2.imread(image_path)
@@ -56,13 +57,25 @@ def get_single_measurement(image_path: str, target_bucket: int = 2) -> float:
         
         thresh_path = f"{base_name}_{timestamp}_bucket_{target_bucket}_thresh{ext}"
         cv2.imwrite(thresh_path, thresh)
-        print(f"[Driver] Saved threshold view to: {thresh_path}")
+        print(f"[Driver] Saved raw threshold view to: {thresh_path}")
+
+        # --- THE STRINGING FIX: MORPHOLOGICAL OPENING ---
+        # Create a 7x7 pixel block to act as our aggressive eraser
+        kernel = np.ones((7, 7), np.uint8)
+        
+        # Erase thin printer streaks (erosion) and restore the thick water blob (dilation)
+        clean_thresh = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel)
+
+        # Save this cleaned view so you can visually verify the streaks are gone!
+        clean_path = f"{base_name}_{timestamp}_bucket_{target_bucket}_clean{ext}"
+        cv2.imwrite(clean_path, clean_thresh)
+        print(f"[Driver] Saved clean (de-stringed) view to: {clean_path}")
 
         # --- THE GAP MEASUREMENT LOGIC ---
-        # Find the Y and X coordinates of EVERY white pixel in the cropped image
-        y_coords, x_coords = np.where(thresh == 255)
+        # IMPORTANT: We are now asking for the white pixels from 'clean_thresh', NOT 'thresh'
+        y_coords, x_coords = np.where(clean_thresh == 255)
 
-        height, width = thresh.shape
+        height, width = clean_thresh.shape
 
         if len(y_coords) == 0:
             print("Warning: No white pixels detected. The fluid missed the target.")
