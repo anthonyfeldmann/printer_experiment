@@ -3,9 +3,9 @@ import numpy as np
 import os
 import time
 
-def get_single_measurement(image_path: str, target_bucket: int = 3) -> float:
+def get_single_measurement(image_path: str, target_bucket: int = 1) -> float:
     """
-    Reads a saved image, crops it using explicit hardcoded pixel coordinates,
+    Reads a saved image, crops it using explicit tight pixel coordinates to avoid bucket walls,
     applies a two-step morphological filter to handle transparent fluid reflections
     and remove 3D printer stringing, and measures the "Empty Gap" from the top 
     of the bucket down to the highest water pixel.
@@ -28,12 +28,14 @@ def get_single_measurement(image_path: str, target_bucket: int = 3) -> float:
         cv2.imwrite(original_path, image)
         print(f"[Driver] Saved original uncropped view to: {original_path}")
 
-        # --- EXPLICIT DICTIONARY CROPPING ---
+        # --- EXPLICIT DICTIONARY CROPPING (TIGHT CENTER COLUMN) ---
         # Format: (Y_start, Y_end, X_start, X_end)
+        # 3 pixels shaved off the left, right, and bottom to avoid plastic glare.
+        # Top edge remains at 216 to maintain the optimizer's zero-target.
         crop_regions = {
-            1: (216, 241, 380, 397),  
-            2: (216, 242, 405, 421),  
-            3: (216, 241, 428, 443)   
+            1: (216, 238, 383, 394),  
+            2: (216, 239, 408, 418),  
+            3: (216, 238, 431, 440)   
         }
 
         if target_bucket not in crop_regions:
