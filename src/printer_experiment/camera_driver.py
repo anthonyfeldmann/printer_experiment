@@ -84,7 +84,7 @@ def get_single_measurement(image_path: str, target_bucket: int = 1) -> float:
                 cv2.putText(image, f"{liquid_mm:.1f}mm", (x_start, global_y_top - 5), 
                             cv2.FONT_HERSHEY_SIMPLEX, 0.3, (0, 255, 0), 1)
 
-        # --- THE MASTER SCORE CALCULATION ---
+
         target_liquid = bucket_liquid_heights[target_bucket]
         spill_penalty = 0.0
 
@@ -110,7 +110,7 @@ def get_single_measurement(image_path: str, target_bucket: int = 1) -> float:
         print(f"Error during OpenCV processing: {e}")
         return None
 
-# --- INDEPENDENT EXECUTION BLOCK ---
+
 if __name__ == "__main__":
     test_image_path = "images/run_1719900000_iter_0.jpg" # Adjust to a real image filename
     print(f"--- Running Global Fluid Analysis Test ---")
