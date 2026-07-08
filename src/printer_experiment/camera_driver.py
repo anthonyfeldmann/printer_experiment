@@ -50,7 +50,7 @@ def get_single_measurement(image_path: str, target_bucket: int = 1) -> float:
             blurred = cv2.GaussianBlur(gray, (5, 5), 0)
 
             # Thresholding (Tuned to 80)
-            _, thresh = cv2.threshold(blurred, 80, 255, cv2.THRESH_BINARY_INV) 
+            _, thresh = cv2.threshold(blurred, 130, 255, cv2.THRESH_BINARY_INV) 
 
             # Two-Step Morphological Filter (Fixes transparency and 3D print strings)
             close_kernel = np.ones((5, 5), np.uint8)
