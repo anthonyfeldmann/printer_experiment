@@ -77,7 +77,6 @@ def get_single_measurement(image_path: str, target_bucket: int = 1) -> float:
 
                 # --- DRAW VISUAL OVERLAYS ON THE MAIN IMAGE ---
                 global_y_top = y_start + top_y_local
-                global_y_bottom = y_start + height
                 
                 # Draw line at the water level
                 cv2.line(image, (x_start, global_y_top), (x_end, global_y_top), (0, 255, 0), 2)
@@ -116,5 +115,5 @@ if __name__ == "__main__":
     test_image_path = "images/run_1719900000_iter_0.jpg" # Adjust to a real image filename
     print(f"--- Running Global Fluid Analysis Test ---")
 
-    # Assuming we want all the water in Bucket 2
-    result = get_single_measurement(test_image_path, target_bucket=2)
+    # Assuming we want all the water in Bucket 1
+    result = get_single_measurement(test_image_path, target_bucket=1)
