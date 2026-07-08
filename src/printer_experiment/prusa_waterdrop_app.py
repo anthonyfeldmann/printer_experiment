@@ -83,15 +83,12 @@ class PrusaWaterDropExperiment(ExperimentApplication):
 
         console.print("Processing measurement from workflow image...")
         
-        # This now returns a Master Score where HIGHER is better (Liquid Volume)
+
         total_score = camera_driver.get_single_measurement(image_path=str(image_path), target_bucket=1)
 
         if total_score is None:
              raise RuntimeError("OpenCV failed to process the image")
 
-        # --- THE OPTIMIZER FIX ---
-        # skopt is a minimizer. By feeding it the NEGATIVE score, it will naturally 
-        # try to find the "lowest" negative number (which is your highest fluid volume!)
         self.opt.tell(executed_x, -float(total_score))
 
         console.print(f"Result: {total_score:.2f} mm fluid score.\n")
@@ -103,7 +100,7 @@ class PrusaWaterDropExperiment(ExperimentApplication):
             for iteration in range(self.config.iterations):
                 self.loop(iteration)
                 
-                # --- MANUAL PAUSE ---
+
                 input("\nAction Required: Please clear the print bed, verify the system is safe, and press [ENTER] to begin the next cycle...\n")
 
         except Exception as e:
@@ -114,11 +111,10 @@ class PrusaWaterDropExperiment(ExperimentApplication):
             console.print("\nDone")
 
             if len(self.opt.yi) > 0:
-                # The optimizer's lowest number is actually your highest volume because of the negative flip
+    
                 best_index = np.argmin(self.opt.yi)
                 optimal_length = self.opt.Xi[best_index][0]
-                
-                # Flip the sign back so it reads nicely for the human!
+
                 best_score = -self.opt.yi[best_index]
 
                 console.print(f"[bold gold1]Optimal ridge length found:[/bold gold1] {optimal_length:.2f} mm")
