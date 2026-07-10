@@ -146,4 +146,32 @@ class PrusaWaterDropExperiment(ExperimentApplication):
             console.print("[bold yellow]Data discarded. The optimizer will ignore this physical trial.[/bold yellow]")
 
         # --- THE PHYSICAL RESET PAUSE ---
-        input("\nAction
+        input("\nAction Required: Please clear the print bed, verify the system is safe, and press [ENTER] to begin the next cycle...\n")
+
+    def run_experiment(self) -> None:
+        console.print("Starting experiment...")
+
+        try:
+            for iteration in range(self.config.iterations):
+                self.loop(iteration)
+                
+        except Exception as e:
+            self.logger.error(f"Experiment stopped: {e}")
+            console.print(traceback.format_exc())
+
+        finally:
+            console.print("\nDone")
+
+            if len(self.opt.yi) > 0:
+                best_index = np.argmin(self.opt.yi)
+                optimal_length = self.opt.Xi[best_index][0]
+                best_score = -self.opt.yi[best_index]
+
+                console.print(f"[bold gold1]Optimal ridge length found for Bucket {self.config.target_bucket}:[/bold gold1] {optimal_length:.2f} mm")
+                console.print(f"[bold gold1]Maximum liquid score achieved:[/bold gold1] {best_score:.2f} mm")
+            else:
+                console.print("Experiment failed before any data was recorded.")
+
+if __name__ == "__main__":
+    app = PrusaWaterDropExperiment()
+    app.run_experiment()
