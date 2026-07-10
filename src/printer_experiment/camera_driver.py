@@ -51,13 +51,18 @@ def get_single_measurement(image_path: str, target_bucket: int = 1) -> float:
             _, thresh = cv2.threshold(blurred, 130, 255, cv2.THRESH_BINARY_INV) 
 
             # --- THE IMAGE WIPING FIX ---
-            # Step 1: CLOSING. Fill in the holes and plump up the water reflections.
-            close_kernel = np.ones((5, 5), np.uint8)
-            solid_thresh = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, close_kernel)
-            
-            # Step 2: OPENING. Use a 3x3 eraser to wipe out the thin 3D printer strings.
+            # Step 1: OPENING. Use a 3x3 eraser to wipe out the thin 3D printer strings FIRST.
+            # If we close first, we accidentally thicken the strings and make them permanent!
             open_kernel = np.ones((3, 3), np.uint8)
-            clean_thresh = cv2.morphologyEx(solid_thresh, cv2.MORPH_OPEN, open_kernel)
+            stringless_thresh = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, open_kernel)
+            
+            # Step 2: CLOSING. Fill in the holes and plump up the remaining water reflections.
+            close_kernel = np.ones((7, 7), np.uint8) # Increased to 7x7 to ensure a solid block
+            clean_thresh = cv2.morphologyEx(stringless_thresh, cv2.MORPH_CLOSE, close_kernel)
+            
+            # Save this cleaned view so you can visually verify the wiping worked!
+            clean_path = f"{base_name}_{timestamp}_bucket_{bucket_id}_clean{ext}"
+            cv2.imwrite(clean_path, clean_thresh)
             # ----------------------------
 
             # Find the white water pixels in the wiped image
@@ -106,4 +111,5 @@ if __name__ == "__main__":
     test_image_path = "images/run_1719900000_iter_0.jpg" # Adjust to a real image filename
     print(f"--- Running Global Fluid Analysis Test ---")
 
+    # Assuming we want all the water in Bucket 1
     result = get_single_measurement(test_image_path, target_bucket=1)
