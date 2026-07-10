@@ -24,6 +24,8 @@ class PrusaWaterDropConfig(ExperimentApplicationConfig):
     image_directory: PathLike = (Path(__file__).parent / "images").resolve()
     update_node_files: bool = False
     
+    # --- GLOBAL EXPERIMENT SETTINGS ---
+    target_bucket: int = Field(default=1, ge=1, le=3) # Change this to 1, 2, or 3!
     iterations: int = Field(default=10, gt=0)
     min_length: float = Field(default=10.0)
     max_length: float = Field(default=60.0)
@@ -54,10 +56,15 @@ class PrusaWaterDropExperiment(ExperimentApplication):
 
         self.config.image_directory.mkdir(parents=True, exist_ok=True)
         
-        # --- THE PERSISTENT MEMORY INIT ---
-        self.memory_file = self.config.workflow_directory / "optimizer_memory.json"
+        # --- THE ISOLATED MEMORY INIT ---
+        # The JSON file is now uniquely named for the specific bucket you are targeting
+        memory_filename = f"optimizer_memory_bucket_{self.config.target_bucket}.json"
+        self.memory_file = self.config.workflow_directory / memory_filename
+        
         self.history_x = []
         self.history_y = []
+
+        console.print(f"[bold cyan]Initializing Optimization for Target: BUCKET {self.config.target_bucket}[/bold cyan]")
 
         if self.memory_file.exists():
             try:
@@ -69,9 +76,11 @@ class PrusaWaterDropExperiment(ExperimentApplication):
                     self.history_y = memory_data["skopt_y"]
                     
                     self.opt.tell(self.history_x, self.history_y)
-                    console.print(f"[bold cyan]Loaded {len(self.history_y)} previous physical runs from memory.[/bold cyan]")
+                    console.print(f"[bold cyan]Loaded {len(self.history_y)} previous runs from {memory_filename}[/bold cyan]")
             except Exception as e:
                 console.print(f"[bold red]Failed to load memory file: {e}[/bold red]")
+        else:
+            console.print(f"[bold yellow]No existing memory found for Bucket {self.config.target_bucket}. Starting fresh.[/bold yellow]")
 
     def loop(self, iteration: int) -> None:
         suggested_x = self.opt.ask()
@@ -101,7 +110,11 @@ class PrusaWaterDropExperiment(ExperimentApplication):
 
         console.print("Processing measurement from workflow image...")
         
-        total_score = camera_driver.get_single_measurement(image_path=str(image_path), target_bucket=1)
+        # Passes the global config target down to the camera driver
+        total_score = camera_driver.get_single_measurement(
+            image_path=str(image_path), 
+            target_bucket=self.config.target_bucket
+        )
 
         if total_score is None:
              raise RuntimeError("OpenCV failed to process the image")
@@ -121,6 +134,7 @@ class PrusaWaterDropExperiment(ExperimentApplication):
             try:
                 with open(self.memory_file, 'w') as f:
                     json.dump({
+                        "target_bucket": self.config.target_bucket,
                         "ridge_lengths": [x[0] for x in self.history_x],
                         "skopt_y": self.history_y,
                         "human_scores": [-y for y in self.history_y] 
@@ -132,32 +146,4 @@ class PrusaWaterDropExperiment(ExperimentApplication):
             console.print("[bold yellow]Data discarded. The optimizer will ignore this physical trial.[/bold yellow]")
 
         # --- THE PHYSICAL RESET PAUSE ---
-        input("\nAction Required: Please clear the print bed, verify the system is safe, and press [ENTER] to begin the next cycle...\n")
-
-    def run_experiment(self) -> None:
-        console.print("Starting experiment...")
-
-        try:
-            for iteration in range(self.config.iterations):
-                self.loop(iteration)
-                
-        except Exception as e:
-            self.logger.error(f"Experiment stopped: {e}")
-            console.print(traceback.format_exc())
-
-        finally:
-            console.print("\nDone")
-
-            if len(self.opt.yi) > 0:
-                best_index = np.argmin(self.opt.yi)
-                optimal_length = self.opt.Xi[best_index][0]
-                best_score = -self.opt.yi[best_index]
-
-                console.print(f"[bold gold1]Optimal ridge length found:[/bold gold1] {optimal_length:.2f} mm")
-                console.print(f"[bold gold1]Maximum liquid score achieved:[/bold gold1] {best_score:.2f} mm")
-            else:
-                console.print("Experiment failed before any data was recorded.")
-
-if __name__ == "__main__":
-    app = PrusaWaterDropExperiment()
-    app.run_experiment()
+        input("\nAction
